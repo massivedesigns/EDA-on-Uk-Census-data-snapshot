@@ -1,0 +1,194 @@
+---
+title: "Exploring Ethnic Disparities and Social Dynamics: A Comprehensive Analysis of the UK Census Snapshot Dataset"
+author: "Onyedika Aralu"
+format: 
+  html:
+    code-fold: true
+    code-link: true
+    embed-resources: true
+    toc: true
+    number-sections: true 
+editor: visual
+bibliography: references.bib
+---
+
+# Introduction
+
+An investigation into the UK census snapshot dataset is undertaken to derive insights, leveraging R programming tools. Commencing with the importation of essential packages such as ggplot[@ggplot2] for visualisation, tidyverse[@tidyverse] to better transform and present our data, various other packages were were utilised. The project involves an initial exploration of the dataset. R programming serves as a crucial tool, facilitating a profound grasp of the science of data and augmenting analytical capabilities[@crawley2012].
+
+```{r}
+#| label: loading My packages
+#| output: false
+library(tidyverse)
+library(ggplot2)
+library(skimr)
+library(scales)
+library(ggthemes)
+```
+
+```{r}
+#| label: loading My Dataset 
+#| output: false
+fd <- read_csv('/Users/mac/Desktop/Liam_data/data-1.csv')
+```
+
+# Data Pre-processing
+
+Initiating various procedures in R to prepare our dataset for analysis, it was observed that approximately 6100 observations contained null values. To address this issue, pre-processing algorithms in R will be employed. Additionally, both dbl columns, namely `H8` and `Female`, were transformed into factors due to their categorical nature. Also `Highest Ed` feature will be renamed properly for easy use. It is noteworthy that most missing values are associated with individuals aged 14 years and below.
+
+```{r}
+#| label: check, fix and drop values 
+nulls<- fd[rowSums(is.na(fd)) > 0, ]
+df <- fd |> rename(Highest_Ed = `Highest Ed`) |> mutate(Female= factor(Female), H8 = factor(H8))
+fixed <- df |> filter(Age <= 14) |> 
+  mutate(Mar_Stat = ifelse(is.na(Mar_Stat), "Never married", Mar_Stat),
+         INC = ifelse(is.na(INC), 0, INC ), Highest_Ed=ifelse(is.na(Highest_Ed),"Less than SecondarySchool",Highest_Ed))
+norm <-df |> filter(Age > 14)
+df_final <- bind_rows(fixed , norm) |> arrange(ID)
+newdf <- df_final[complete.cases(df_final), ] # droping the remaininng null values
+```
+
+## Feature engineering
+
+Guided by the UK NHS publication on inclusive content <https://service-manual.nhs.uk/content/inclusive-content/age>, a new feature, `Age_Group`, is created from the existing Age feature. Simultaneously, the generation of `income_distribution` within common income brackets provides additional insights into this census data.
+
+```{r}
+#| label: creating a new column with age bracket 
+newdf <- newdf |>
+  mutate(Age_Group = case_when(Age >= 1 & Age <= 3 ~ "toddler", Age >= 4 & Age <= 12 ~ "Child",Age >= 13 & Age <= 19 ~ "Teenager", 
+                               Age >= 19 & Age <= 64 ~ "Adult", Age > 64 ~ "Older People", TRUE ~ "Infant"))
+```
+
+```{r}
+#| label: creating income bracket
+income_breaks <- c(-Inf, 0, 15000, 24000, 45000, 60000, Inf)
+income_labels <- c("No Income","Very Low", "Low", "Medium", "High", "Very High")
+newdf$Income_distribution <- cut(newdf$INC, breaks = income_breaks, labels = income_labels, include.lowest = TRUE)
+```
+
+# Exploratory Analysis
+
+A quick dive into this dataset indicated A discernible inclination towards ethnic diversity, aligning with public accessible information that highlights the UK as one of the top countries with favorable migrant policies[@vargas-silva2014]. This recognition intensifies our curiosity to delve into the trends and treatments of ethnic minority and its populations. The objective is to comprehend the dynamics among major and minor ethnic groups, enabling informed decision-making and discussions related to migration to the United Kingdom based on this census snapshot data. Evaluating the experiences of migrants over time, as depicted in this census, is pivotal for gauging the country's appeal and reception to individuals from diverse backgrounds.
+
+## Income Distribution by Ethnicity
+
+```{r}
+ggplot(newdf, aes(x = Eth, y = INC, fill = Eth)) +
+  geom_boxplot() + labs(title = "Income Distribution by Ethnicity", x = "Ethnicity", y = "Income") +
+  theme_minimal()+ scale_y_continuous(labels = scales::comma)
+```
+
+Visualising the income distribution by ethnicity reveals that the `white` ethnic group, considered the major ethnic population in this context, tends to have the highest income, which aligns with the majority demographic of the country. However, intriguingly, the analysis shows that three other prominent ethnicities---`Hispanic`, `Black`, and `Asian`---also exhibit a decent income distribution. Notably, among these, the highest earners emerge from the `Black` ethnicity, offering a surprising finding in a predominantly white-dominated country. Further exploration will delve into factors such as the Highest Education level to better understand the underlying dynamics influencing these income trends. Additional analyses aim to uncover deeper insights within these demographic features.
+
+## Exploring Influences on Highest Earner: Education, Age and Marital Status Analysis
+
+```{r}
+#| label: filter black people and see there earnings and plot for black people to see insights 
+Blacks <- newdf|> filter(Eth == 'Black')
+ggplot(data = Blacks, mapping = aes(x = Age, y =INC))+
+  geom_point(aes(color = Mar_Stat, shape = Highest_Ed))+ scale_y_continuous(labels = comma) +
+  labs(title = "Scatter Plot of Age and INC for Black people",x = "Age",y = "INC")
+```
+
+Exploring influences on high earnings, An Analysis of `Age`, `Highest Education`, and `Marital Status` Impact on Income within the `Black` Ethnicity Reveals Intriguing Patterns. The visualisation highlights that, to attain an income significantly above average in this country, individuals from the `Black` ethnicity are more likely to benefit from pursuing a master's degree. However, it is noteworthy that our top earner who is from this ethnicity had attained only a moderate level of higher education, falling short of completing a bachelor's degree or higher. Additionally, the individual was married and belonged to the age group of 25 to 40, categorized as `Adult` during the pre-processing stage.
+
+## Income Dynamics: Visualising Marital Status Impact on Average Earnings.
+
+It is observed in our investigation on the highest earning within the `Black` demography, where the highest earner in our dataset originated, that there is no discernible impact or influence from Marital Status. This has sparked curiosity to examine the distribution of income concerning marital status on average.
+
+```{r}
+#| label: Average income by marital status and bar plotting it
+average_income_by_marital_status <- newdf |> 
+  group_by(Mar_Stat) |> summarize(Average_Income = mean(INC, na.rm = TRUE))
+ggplot(average_income_by_marital_status, aes(x = Mar_Stat, y = Average_Income, fill = Mar_Stat)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Average Income by Marital Status",x = "Marital Status",y = "Average Income", fill = "Marital Status") +
+  theme_minimal()
+```
+
+The data illustrates that individuals in the `married` demographic tend to achieve higher average earnings compared to those with other marital statuses. Notably, individuals who are `divorced`, `separated`, or `widowed` exhibit intriguing indications of good income dynamics. Conversely, those who have never been married display considerably lower average income. This observation aligns with expectations, as this group is predominantly comprised of individuals in the early life stages, categorized as `babies`, `toddlers`, and `teenagers`, as identified during the pre-processing stage. To further back this finding up and its relationship with `Age`, an Age distribution plot based on the marital status will be visualised to further comprehend the Average income insights above.
+
+## Age Distribution by Marital Status and Ethnicity
+
+```{r, fig.width=10, fig.height=5}
+#| label: Plotting Age distribution with mar_stat and eth
+ggplot(newdf, aes(x = Age, fill = Mar_Stat, color = Eth)) +
+  geom_histogram(binwidth = 5, position = "dodge") +
+  labs(title = "Age Distribution by Marital Status and Ethnicity", x = "Age", y = "Count") +
+  facet_wrap(~Mar_Stat, scales = "free") + theme_minimal()
+```
+
+Although this may not provide a distinct insight, one can observe the facet of the `widowed` population and how it is negatively skewed, primarily due to the majority falling within the age range of 60 and above.
+
+We adopt an alternative method to visualise this for deeper insights by leveraging our created feature, `Age_group`. We exclude the predominant demographic, which is the `white` ethnicity, to obtain a more meaningful representation of migrant ethnicities.
+
+```{r}
+#| label: Plot with Age_Group as a factor using geom_bar
+migrants <- filter(newdf, Eth != "White")
+ggplot(migrants, aes(y= Age_Group, fill = Eth)) +
+  geom_bar(position = "dodge") +
+  labs(title = "Age Group Distribution by Marital Status and Ethnicity", x = "Count", y = "Age Group") +
+  facet_wrap(~Mar_Stat, scales = "free") + theme_minimal()+
+  theme(strip.background = element_rect(fill = "lightblue", color = "black"))
+```
+
+This visualization improves our comprehension of the Age distribution based on Age groups, taking into account marital status and ethnicity. The facet corresponding to `never married` encompasses all age groups, indicating that the `Asian` ethnicity has a larger population of `infants`, `toddlers`, `children`, and `teenagers`. This suggests a cultural tendency toward larger families in the Asian demographic within the country[@thefami2008]. Surprisingly, there are a few teenagers who are married, despite being below the legal age for marriage. Among them, the white and black ethnicities dominate with counts of 3 and 4, respectively. Observing that this visualisation illustrates the family-oriented nature of minority demographics with children, our next step is to explore the distribution of families within households based on average income.
+
+## Average Income by Number of People in Households
+
+```{r}
+#| label: Average income by number of people in house id
+avgincome_by_household <- newdf |> 
+  group_by(ID) |> mutate(Average_Income = mean(INC, na.rm = TRUE))
+avgincome_by_household |> 
+  ggplot(aes(x = Person_ID, y = Average_Income, color = as.factor(Female))) +
+  geom_point() +
+  scale_y_continuous(labels = comma)+
+  labs(title = "Average Income by Number of People in Households",
+       x = "Number of People", y = "Average Income", color = "Female") +theme_minimal()
+```
+
+The graph clearly indicates that as the number of individuals in a household increases, the average income decreases. To delve deeper into this pattern, we will specifically analyse households with above 10 occupants to analyse factors influencing their relatively low income, exploring the potential role of Gender(`Female` or `non female`).
+
+## Exploring Large Households (Above 10 Occupants): Age and Income Distribution
+
+```{r}
+#| label: checking household size and household with more than 10 people
+household_size <- newdf |> group_by(ID) |> summarize(Household_Size = n_distinct(Person_ID))
+pullid <- household_size|> filter(Household_Size > 10) |> pull(ID) # pull id of household > 10 people
+household11up <- newdf |> filter(ID %in% pullid)
+# lets now visualise based on this household and Create a scatter plot with facets
+ggplot(household11up, aes(x = INC, y = Age, color = Female, shape=H8)) +
+  geom_point() + facet_wrap(~Eth, scales = "free") +
+  labs(title = "Exploring Large Households (Above 10 Occupants): Age and Income Distribution",
+       x = "Income", y = "Age") + scale_color_manual(values = c("0" = "blue", "1" = "green"))
+```
+
+It is evident from the plot that households with more than 10 people tend to have relatively low income, and notably, these are predominantly `Female` in these households. Intriguingly, a closer look at the `Asian` facet in this plot reveals that the majority of Asians reside in households that share either a kitchen, bathroom, or toilet.
+
+## Average Income for all Households in our dataset
+
+```{r, fig.width=15, fig.height=9}
+#| label: Filter households with 1 to 16 people as seen as the largest number of household to be 16
+comparison_data <- avgincome_by_household |> 
+  group_by(ID) |> summarize(Count = n_distinct(Person_ID))
+# Filter data for the specified numbers of people
+filtered_data <- comparison_data |> 
+  filter(Count >= 1 & Count <= 16) |> left_join(avgincome_by_household, by = "ID")
+# Your ggplot code here
+ggplot(filtered_data, aes(x = as.factor(Count), y = Average_Income, fill = Eth, shape = Highest_Ed)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~Count, scales = "free") +  # Facet by the number of people
+  labs(title = "Average Income for Households",x = "Number of People in a household",y = "Average Income",
+       fill = "Ethnicity", shape = "Education") +
+  scale_y_continuous(labels = scales::comma) + theme_minimal() +
+  theme(strip.placement = "outside", strip.text = element_blank(), 
+        axis.title.x = element_text(size = 20),axis.title.y = element_text(size = 20),
+        axis.text.x = element_text(size = 15),axis.text.y = element_text(size = 15),plot.title = element_text(size = 30) )
+```
+
+Exploring income distributions across varying household sizes in our dataset, considering `ethnicity`, reveals that the prevalence of `White` individuals decreases as the number of people in a household increases. This suggests that individuals of `White` ethnicity prefer smaller households. Conversely, as the household size increases, `Asians` become the dominant ethnic group, correlating with a rise in average income. This supports our investigation, indicating that `Asians` favor larger, communal households to promote family communication and uphold their cultural values in the diverse society of the United Kingdom.
+
+# Conclusion
+
+Using this snapshot census data, we set out to investigate any disparities in society and treatment of non-white ethnic backgrounds in the country. We can now conclude that, although there are observations of economic inequality, this dataset also clearly supports the widely held belief that the United Kingdom is a diverse nation that welcomes people of different cultural backgrounds and upholds their freedom to integrate their beliefs into the community. In light of these findings, we believe that the United Kingdom is a country deserving of further respectable cultural integrations. Additional specificity on income is advocated in ranges of employment sector integration to properly assess the influence of income on education achieved. Nevertheless, more should be done to the dataset to collect additional information on gender, since there appears to be gender bias in this snapshot.
